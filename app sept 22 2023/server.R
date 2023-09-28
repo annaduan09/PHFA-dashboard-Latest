@@ -6,51 +6,53 @@ library(sf)
 library(dplyr)
 library(leaflet)
 library(stringr)
-library(kableExtra)
 library(jsonlite)
 library(magrittr)
 library(HatchedPolygons)
 library(tidyverse)
+library(tigris)
+library(mapview)
 
 
 #### Data processing ####  
-dat <- st_read("homeownership_17_21.geojson") %>%
-  st_as_sf() %>%
-  st_transform("EPSG:4326") %>%
-  st_make_valid() %>%
-  filter(is.na(owner_occ_hh_pct_21) == FALSE) %>%
-  dplyr::mutate(NAME = word(NAME, 1))
+counties <- counties(state = 42) %>%
+  rename(county = NAME) %>%
+  dplyr::select(county) %>%
+  st_transform("EPSG:32129")
 
-dat <- dat %>%
-  dplyr::select(NAME) %>%
-  st_centroid() %>%
-  dplyr::mutate(lon = sf::st_coordinates(.)[,1],
-                lat = sf::st_coordinates(.)[,2]) %>%
+dat <- st_read("/Users/annaduan/Library/CloudStorage/Box-Box/PHFA Affordability Study (2022)/PHFA dashboard/data/panels/phfa_dash_data_9.28.geojson") %>%
   st_drop_geometry() %>%
-  left_join(dat, by = "NAME") %>%
-  st_as_sf()
+  left_join(counties, by = "county") %>%
+  st_as_sf() %>%
+  st_make_valid() %>%
+  st_transform("EPSG:32129")
+
+panel.sf <- dat %>%
+  dplyr::select(county) %>%
+  st_centroid() %>%
+  st_drop_geometry() %>%
+  left_join(dat, by = "county") %>%
+  st_as_sf() %>%
+  st_transform("EPSG:32129")
+
+panel <- panel.sf %>%
+  st_drop_geometry()
 
 
 rural <- hatched.SpatialPolygons(dat %>% filter(rural == 1), density = 13, angle = c(45, 135)) %>%
   st_union() %>%
-  st_as_sf()
+  st_as_sf() %>%
+  st_transform("EPSG:32129")
 
 #### Leaflet formatting ####  
 ##### palette #####
 # Compute quintiles
-#quintiles <- quantile(dat$owner_occ_hh_pct)
-quintiles <- c(52, 71, 74, 78, 85)
-names(quintiles) = c("52%", "71%", "74%", "78%", "85%")
-# Create color palette based on data range
-color_palette <- colorBin("YlGnBu", bins = quintiles, domain = dat$owner_occ_hh_pct_21)
 
-##### labels #####
-labs_dat <- sprintf(
-  "<strong>%s</strong><br/>
-  Home Ownership Rate: %.0f%%<sup></sup><br/>
-  Statewide Median: 74%%",
-  dat$NAME, dat$owner_occ_hh_pct_21
-) %>% lapply(htmltools::HTML)
+# quintiles <- c(52, 71, 74, 78, 85)
+# names(quintiles) = c("52%", "71%", "74%", "78%", "85%")
+# # Create color palette based on data range
+# color_palette <- colorBin("YlGnBu", bins = quintiles, domain = dat$owner_occ_hh_pct_21)
+
 
 ##### title #####
 title_dat <- tags$div(
@@ -61,39 +63,84 @@ title_dat <- tags$div(
 server <- function(input, output, session) {
   
 
+  
+  #### reactive palette ####
+  mapPalette <- reactive({
+    colorNumeric(
+      palette = "YlGnBu",
+      domain = NULL,
+      na.color = "gray",
+      reverse = FALSE)
+  })
+  
+  #### reactive dataframe ####
+  varInput.sf <- reactive({
+    input$variable
+    print(input$variable)
+  })
+  
+  varInput <- reactive({
+    input$variable
+  })
+  
+  dat.sf = reactive({
+    panel.sf %>%
+      dplyr::select(variable = input$variable, county, geometry, lat, lon)
+  })
+  
+  dat = reactive({
+    panel %>%
+      dplyr::select(county, variable = input$variable)
+  })
+  
+  
+
+  
+#### leaflet ####
 output$leaflet <- renderLeaflet({
-  leaflet(dat) %>%
-    addPolygons(fillColor = ~color_palette(owner_occ_hh_pct_21),
-                weight = 2,
-                opacity = 1,
+  leaflet() %>%
+    addPolygons(data = dat.sf(), fillColor = ~mapPalette()(dat.sf()$variable),
                 color = "white",
+                weight = 1,
+                opacity = 1,
                 dashArray = "3",
-                fillOpacity = 0.7,
+                fillOpacity = 0.8,  # Reduce opacity here
                 highlightOptions = highlightOptions(
-                  weight = 5,
+                  weight = 1,
                   color = "#666",
                   dashArray = "",
-                  fillOpacity = 0.7,
-                  bringToFront = TRUE),
-                # label = labs_dat,
-                # labelOptions = labelOptions(
-                #   style = list("font-weight" = "normal", padding = "3px 8px"),
-                #   textsize = "15px",
-                #   direction = "auto")
-                ) %>%
-    addLabelOnlyMarkers(~lon, ~lat, label =  ~as.character(NAME),
-                        labelOptions = labelOptions(noHide = T, direction = 'center', textOnly = T, style = list(
-                          "color" = "DarkSlateBlue",
-                          "font-family" = "sans-serif",
-                         # "font-weight" = "bold",
-                          "font-size" = "12px")),
-                        group = "txt_labels") %>%
-    addControl(title_dat, position = "topright") %>%
+                  fillOpacity = 0.5,
+                  bringToFront = TRUE)
+               # label = labs_dat,
+               # labelOptions = labelOptions(
+               #   style = list("font-weight" = "normal", padding = "3px 8px"),
+               #   textsize = "15px",
+               #   direction = "auto")
+               ) %>%
+    # addLegend(pal = mapPalette(), title = "", opacity = 1, values = dat.sf()$variable,
+    #           position = "bottomright") %>%
+    # addLabelOnlyMarkers(data = dat.sf(), ~dat.sf()$lon, ~dat.sf()$lat, label =  ~as.character(dat.sf()$county),
+    #                     labelOptions = labelOptions(noHide = T, direction = 'center', textOnly = T, style = list(
+    #                       "color" = "DarkCyan",
+    #                       "font-family" = "sans-serif",
+    #                       "font-size" = "12px")),
+    #                     group = "txt_labels") %>%
     addProviderTiles(providers$CartoDB.Positron) %>%
-    addLegend(pal = color_palette, title = "Percent", opacity = 1, values = ~quintiles,
-              position = "bottomright") %>%
-    groupOptions("txt_labels", zoomLevels = 8:100)  
-})
+    groupOptions("txt_labels", zoomLevels = 12:100)
+  })
+#     addLabelOnlyMarkers(~lon, ~lat, label =  ~as.character(NAME),
+#                         labelOptions = labelOptions(noHide = T, direction = 'center', textOnly = T, style = list(
+#                           "color" = "DarkSlateBlue",
+#                           "font-family" = "sans-serif",
+#                          # "font-weight" = "bold",
+#                           "font-size" = "12px")),
+#                         group = "txt_labels") %>%
+#     addControl(title_dat, position = "topright") %>%
+#     addProviderTiles(providers$CartoDB.Positron) %>%
+#     addLegend(pal = color_palette, title = "Percent", opacity = 1, values = ~quintiles,
+#               position = "bottomright") %>%
+#     groupOptions("txt_labels", zoomLevels = 8:100)  
+# })
 
 x = reactiveVal(1)
 observeEvent(input$rural,{
@@ -117,16 +164,13 @@ observeEvent(input$rural, {
 
 ##### plot #####
 output$plot <- renderPlot({
-  dat %>%
-    mutate(reord = as.numeric(owner_occ_hh_pct_21) + as.numeric(rural),
-           ID = fct_reorder(NAME, reord, .desc = F)) %>% 
-  ggplot(aes(x = reorder(ID, rural), y = owner_occ_hh_pct_21, fill = owner_occ_hh_pct_21)) +
-    geom_bar(color = NA, stat = "identity") +
-  # geom_text(aes(label=NAME), colour = "navy") +
-    geom_text(aes(label=paste(owner_occ_hh_pct_21, "%", sep = '')), hjust=0, colour = "navy", alpha = 0.6,  position = "dodge") +
-   #scale_color_manual(values = c("white", "navy")) +
+  v <- input$variable
+  
+  ggplot(data = dat(), aes(x = county, y = variable, fill = variable)) +
+    geom_bar(color = "transparent", stat = "identity") +
+    geom_text(aes(label=variable), hjust=0, colour = "navy", alpha = 0.6,  position = "dodge") +
     scale_fill_distiller(palette = "YlGnBu", direction = 1) +
-    labs(x = "Urban Counties                                                                                                        Rural Counties", y = "", fill = "%", color = "Rural County") +
+    labs(title = "", fill = v, color = "Rural County") +
     theme_minimal() +
     theme(legend.position = "none",
           text = element_text(size = 16),
@@ -136,11 +180,11 @@ output$plot <- renderPlot({
 
 ##### summary #####
 output$tab <- renderTable({
-    data.frame(quartile_1 = quantile(dat$owner_occ_hh_pct_21, probs = 0.25, na.rm = TRUE),
-              mean = mean(dat$owner_occ_hh_pct_21, na.rm = TRUE),
-              median = median(dat$owner_occ_hh_pct_21, na.rm = TRUE),
-              quartile_3 = quantile(dat$owner_occ_hh_pct_21, probs = 0.75, na.rm = TRUE),
-              max = max(dat$owner_occ_hh_pct_21, na.rm = TRUE)) 
+    data.frame(quartile_1 = quantile(dat()$variable, probs = 0.25, na.rm = TRUE),
+              mean = mean(dat()$variable, na.rm = TRUE),
+              median = median(dat()$variable, na.rm = TRUE),
+              quartile_3 = quantile(dat()$variable, probs = 0.75, na.rm = TRUE),
+              max = max(dat()$variable, na.rm = TRUE)) 
   
   
 })

@@ -10,14 +10,13 @@ library(jsonlite)
 library(magrittr)
 library(shinythemes)
 
-ui <- navbarPage(theme = shinytheme("yeti"),
+ui <- navbarPage(theme = shinytheme("united"),
                  title = "Pennsylvania Counties Housing Explorer",
                    sidebarLayout(
                      sidebarPanel(width = 3,
-                      selectInput("variable", "Select a variable", choices = c("Homeownership rate (%)" = "owner_occ_hh_pct_21",
-                                                                               "Residents" = "population_2010",
-                                                                               "Median Age" = "median_age_2020",
-                                                                               "Median Family Income" = "medhhinc_2020"), selected = "owner_occ_hh_pct_21"),
+                      selectInput("variable", "Select a variable", choices = c("Homeownership rate (%)" = "owner_occ_hh_pct2021",
+                                                                               "Vacant rental units (%)" = "renter_vacant_pct2011",
+                                                                               "Median Rent ($)" = "med_gross_rent2016"), selected = "owner_occ_hh_pct2021"),
                       # checkboxGroupInput("dataLayers", "Rural counties",
                       #                    choices = c("Show" = "rural"),
                       #                    selected = character(0)),

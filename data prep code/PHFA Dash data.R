@@ -300,7 +300,7 @@ phfa_dash_dat <- dat %>%
   st_make_valid()
   
 
-st_write(dat, "phfa_dash_data_Sept28.geojson")
+st_write(phfa_dash_dat, "phfa_dash_data_9.28.geojson")
 
 #### Leaflet test run ####
 dat <- st_read("/Users/annaduan/Library/CloudStorage/Box-Box/PHFA\ dashboard/data\ panels/phfa_dash_data_sept26.geojson") %>%
