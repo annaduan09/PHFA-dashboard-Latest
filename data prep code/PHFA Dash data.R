@@ -7,6 +7,7 @@ library(leaflet)
 library(sf)
 library(mapview)
 library(stringr)
+library(tigris)
 
 mapTheme <- function(base_size = 15) {   
   theme(     text = element_text(color = "black", family="Helvetica"),     
@@ -274,8 +275,13 @@ dat <- dat21 %>%
   left_join(dat11, by = c("county2021" = "county2011")) %>%
   rename(county = county2021)
 
+#### CHAS Data 
+chas <- st_read("/Users/annaduan/Library/CloudStorage/Box-Box/PHFA Affordability Study (2022)/PHFA dashboard/data/PACounty_2015-2019.xlsx") %>%
+  mutate(Geography = word(Geography, end = 1))
+names(chas) <- c("county", "renter_hh", "afford_avail_units", "housing_balance")
+
 #### Census rural-urban by county 
-rural <- st_read("/Users/annaduan/Library/CloudStorage/Box-Box/PHFA dashboard/data panels/2020_UA_COUNTY.xlsx") %>% 
+rural <- st_read("/Users/annaduan/Library/CloudStorage/Box-Box/PHFA Affordability Study (2022)/PHFA dashboard/data/2020_UA_COUNTY.xlsx") %>% 
   filter(Field1 == "42") %>%
   mutate(rural = ifelse(as.numeric(Field22)/as.numeric(Field5) > 0.5, 1, 0)) %>%
   dplyr::select(Field4, rural) %>%
@@ -286,14 +292,15 @@ counties.sf <- counties(state = "PA") %>%
   dplyr::select("county" = "NAME")
 
 #### Write panel #### 
-dat <- dat %>%
-  left_join(county, by = "county") %>%
+phfa_dash_dat <- dat %>%
+  left_join(chas, by = "county") %>%
+  left_join(rural, by = "county") %>%
   left_join(counties.sf, by = "county") %>%
   st_as_sf() %>%
   st_make_valid()
   
 
-st_write(dat, "phfa_dash_data_sept26.geojson")
+st_write(dat, "phfa_dash_data_Sept28.geojson")
 
 #### Leaflet test run ####
 dat <- st_read("/Users/annaduan/Library/CloudStorage/Box-Box/PHFA\ dashboard/data\ panels/phfa_dash_data_sept26.geojson") %>%
